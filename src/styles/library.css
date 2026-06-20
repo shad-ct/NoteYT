@@ -1,0 +1,533 @@
+/*
+ * library.css — Notes library page styles
+ *
+ * Design aesthetic: shadcn/ui-inspired — neutral dark grays, subtle borders,
+ * no harsh contrast. Clean and readable.
+ */
+
+/* ─── Reset & base ──────────────────────────────────────────────────────────── */
+
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+:root {
+    --lib-bg: #09090b;
+    --lib-bg-surface: #18181b;
+    --lib-bg-surface-hover: #27272a;
+    --lib-bg-surface-active: #3f3f46;
+    --lib-border: #27272a;
+    --lib-border-subtle: #1e1e21;
+    --lib-text: #fafafa;
+    --lib-text-muted: #a1a1aa;
+    --lib-text-placeholder: #52525b;
+    --lib-accent: #3b82f6;
+    --lib-accent-hover: #2563eb;
+    --lib-danger: #ef4444;
+    --lib-success: #22c55e;
+    --lib-ts-chip-bg: #1e3a5f;
+    --lib-ts-chip-text: #93c5fd;
+    --lib-radius: 8px;
+    --lib-radius-sm: 5px;
+    --lib-font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    --lib-font-mono: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
+}
+
+html,
+body {
+    background: var(--lib-bg);
+    color: var(--lib-text);
+    font-family: var(--lib-font);
+    font-size: 14px;
+    line-height: 1.5;
+    min-height: 100vh;
+}
+
+a {
+    color: var(--lib-accent);
+    text-decoration: underline;
+}
+
+a:hover {
+    color: var(--lib-accent-hover);
+}
+
+/* ─── App container ─────────────────────────────────────────────────────────── */
+
+#app {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 32px 24px;
+}
+
+/* ─── Header ────────────────────────────────────────────────────────────────── */
+
+.lib-header {
+    margin-bottom: 28px;
+}
+
+.lib-header-brand {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.lib-logo {
+    font-size: 28px;
+}
+
+.lib-header h1 {
+    font-size: 24px;
+    font-weight: 700;
+    letter-spacing: -0.025em;
+    color: var(--lib-text);
+}
+
+/* ─── Controls ──────────────────────────────────────────────────────────────── */
+
+.lib-controls {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+}
+
+.lib-search {
+    flex: 1;
+    min-width: 200px;
+    background: var(--lib-bg-surface);
+    border: 1px solid var(--lib-border);
+    border-radius: var(--lib-radius-sm);
+    color: var(--lib-text);
+    font-family: var(--lib-font);
+    font-size: 13px;
+    padding: 7px 12px;
+    outline: none;
+    transition: border-color 0.15s;
+}
+
+.lib-search::placeholder {
+    color: var(--lib-text-placeholder);
+}
+
+.lib-search:focus {
+    border-color: var(--lib-accent);
+}
+
+.lib-sort {
+    background: var(--lib-bg-surface);
+    border: 1px solid var(--lib-border);
+    border-radius: var(--lib-radius-sm);
+    color: var(--lib-text);
+    font-family: var(--lib-font);
+    font-size: 13px;
+    padding: 7px 10px;
+    outline: none;
+    cursor: pointer;
+}
+
+.lib-sort:focus {
+    border-color: var(--lib-accent);
+}
+
+/* ─── Stats ─────────────────────────────────────────────────────────────────── */
+
+.lib-stats {
+    font-size: 12px;
+    color: var(--lib-text-muted);
+    margin-bottom: 16px;
+}
+
+/* ─── Buttons ───────────────────────────────────────────────────────────────── */
+
+.lib-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border: none;
+    border-radius: var(--lib-radius-sm);
+    cursor: pointer;
+    font-family: var(--lib-font);
+    font-size: 13px;
+    font-weight: 500;
+    line-height: 1;
+    padding: 7px 12px;
+    transition: background 0.15s ease;
+    white-space: nowrap;
+    text-decoration: none;
+}
+
+.lib-btn:focus-visible {
+    outline: 2px solid var(--lib-accent);
+    outline-offset: 2px;
+}
+
+.lib-btn--primary {
+    background: var(--lib-accent);
+    color: #fff;
+}
+
+.lib-btn--primary:hover {
+    background: var(--lib-accent-hover);
+}
+
+.lib-btn--ghost {
+    background: transparent;
+    color: var(--lib-text-muted);
+    border: 1px solid var(--lib-border);
+}
+
+.lib-btn--ghost:hover {
+    background: var(--lib-bg-surface-hover);
+    color: var(--lib-text);
+}
+
+.lib-btn--danger {
+    background: transparent;
+    color: var(--lib-danger);
+    border: 1px solid var(--lib-border);
+}
+
+.lib-btn--danger:hover {
+    background: rgba(239, 68, 68, 0.1);
+    border-color: var(--lib-danger);
+}
+
+/* ─── Grid ──────────────────────────────────────────────────────────────────── */
+
+.lib-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 16px;
+}
+
+/* ─── Video card ────────────────────────────────────────────────────────────── */
+
+.lib-card {
+    background: var(--lib-bg-surface);
+    border: 1px solid var(--lib-border);
+    border-radius: var(--lib-radius);
+    overflow: hidden;
+    cursor: pointer;
+    transition: border-color 0.15s, transform 0.1s;
+    display: flex;
+    flex-direction: column;
+}
+
+.lib-card:hover {
+    border-color: var(--lib-accent);
+    transform: translateY(-1px);
+}
+
+.lib-card:focus-visible {
+    outline: 2px solid var(--lib-accent);
+    outline-offset: 2px;
+}
+
+.lib-card-thumb {
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    overflow: hidden;
+    background: var(--lib-bg);
+}
+
+.lib-card-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+.lib-card-body {
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    flex: 1;
+}
+
+.lib-card-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--lib-text);
+    line-height: 1.3;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.lib-card-channel {
+    font-size: 12px;
+    color: var(--lib-text-muted);
+}
+
+.lib-card-meta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 6px;
+}
+
+.lib-badge {
+    background: var(--lib-bg-surface-active);
+    border-radius: 20px;
+    color: var(--lib-text-muted);
+    font-size: 11px;
+    padding: 2px 8px;
+}
+
+.lib-card-date {
+    font-size: 11px;
+    color: var(--lib-text-placeholder);
+}
+
+/* ─── Empty state ───────────────────────────────────────────────────────────── */
+
+.lib-empty {
+    color: var(--lib-text-muted);
+    font-size: 14px;
+    padding: 32px 0;
+    text-align: center;
+    grid-column: 1 / -1;
+}
+
+.lib-loading {
+    color: var(--lib-text-muted);
+    padding: 48px;
+    text-align: center;
+}
+
+/* ─── Back button ───────────────────────────────────────────────────────────── */
+
+.lib-back-btn {
+    background: transparent;
+    border: none;
+    color: var(--lib-text-muted);
+    cursor: pointer;
+    font-family: var(--lib-font);
+    font-size: 13px;
+    margin-bottom: 20px;
+    padding: 4px 0;
+    transition: color 0.15s;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.lib-back-btn:hover {
+    color: var(--lib-text);
+}
+
+/* ─── Detail view ───────────────────────────────────────────────────────────── */
+
+.lib-detail-header {
+    display: flex;
+    gap: 20px;
+    margin-bottom: 20px;
+    align-items: flex-start;
+    flex-wrap: wrap;
+}
+
+.lib-detail-thumb {
+    width: 200px;
+    border-radius: var(--lib-radius-sm);
+    flex-shrink: 0;
+}
+
+@media (max-width: 600px) {
+    .lib-detail-thumb {
+        width: 100%;
+    }
+}
+
+.lib-detail-meta {
+    flex: 1;
+    min-width: 200px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.lib-detail-title {
+    font-size: 20px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    color: var(--lib-text);
+    line-height: 1.3;
+}
+
+.lib-detail-channel {
+    color: var(--lib-text-muted);
+    font-size: 13px;
+}
+
+.lib-detail-link {
+    color: var(--lib-accent);
+    font-size: 13px;
+    text-decoration: none;
+}
+
+.lib-detail-link:hover {
+    text-decoration: underline;
+}
+
+.lib-detail-stats {
+    color: var(--lib-text-placeholder);
+    font-size: 12px;
+}
+
+.lib-detail-actions {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 24px;
+    flex-wrap: wrap;
+}
+
+/* ─── Notes list (detail view) ──────────────────────────────────────────────── */
+
+.lib-notes-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.lib-note-card {
+    background: var(--lib-bg-surface);
+    border: 1px solid var(--lib-border);
+    border-radius: var(--lib-radius);
+    padding: 14px 16px;
+}
+
+.lib-ts-chip {
+    display: inline-flex;
+    align-items: center;
+    background: var(--lib-ts-chip-bg);
+    color: var(--lib-ts-chip-text);
+    border: 1px solid rgba(59, 130, 246, 0.3);
+    border-radius: 20px;
+    font-family: var(--lib-font-mono);
+    font-size: 11px;
+    font-weight: 500;
+    margin-bottom: 10px;
+    padding: 3px 10px;
+    text-decoration: none;
+    transition: background 0.15s;
+}
+
+.lib-ts-chip:hover {
+    background: #1e40af;
+    color: var(--lib-ts-chip-text);
+}
+
+/* ─── Markdown content (read-only) ─────────────────────────────────────────── */
+
+.lib-note-content {
+    color: var(--lib-text);
+    font-size: 13px;
+    line-height: 1.65;
+}
+
+.lib-note-content h1 {
+    font-size: 18px;
+    font-weight: 700;
+    margin: 8px 0 4px;
+}
+
+.lib-note-content h2 {
+    font-size: 16px;
+    font-weight: 600;
+    margin: 6px 0 4px;
+}
+
+.lib-note-content h3 {
+    font-size: 14px;
+    font-weight: 600;
+    margin: 6px 0 4px;
+}
+
+.lib-note-content p {
+    margin-bottom: 6px;
+}
+
+.lib-note-content p:last-child {
+    margin-bottom: 0;
+}
+
+.lib-note-content strong {
+    font-weight: 700;
+}
+
+.lib-note-content em {
+    font-style: italic;
+}
+
+.lib-note-content del {
+    text-decoration: line-through;
+    color: var(--lib-text-muted);
+}
+
+.lib-note-content code {
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid var(--lib-border);
+    border-radius: 3px;
+    font-family: var(--lib-font-mono);
+    font-size: 12px;
+    padding: 1px 4px;
+}
+
+.lib-code-block {
+    background: #111;
+    border: 1px solid var(--lib-border);
+    border-radius: var(--lib-radius-sm);
+    font-family: var(--lib-font-mono);
+    font-size: 12px;
+    line-height: 1.5;
+    overflow-x: auto;
+    padding: 10px 12px;
+    margin: 6px 0;
+}
+
+.lib-note-content blockquote {
+    border-left: 3px solid var(--lib-accent);
+    color: var(--lib-text-muted);
+    margin: 6px 0;
+    padding: 4px 12px;
+}
+
+.lib-note-content ul,
+.lib-note-content ol {
+    padding-left: 18px;
+    margin: 4px 0;
+}
+
+.lib-note-content li {
+    margin-bottom: 2px;
+}
+
+.lib-note-content hr {
+    border: none;
+    border-top: 1px solid var(--lib-border);
+    margin: 10px 0;
+}
+
+.lib-task-done {
+    color: var(--lib-text-muted);
+    text-decoration: line-through;
+    list-style: none;
+}
+
+.lib-task {
+    list-style: none;
+}
+
+.lib-note-meta {
+    color: var(--lib-text-placeholder);
+    font-size: 11px;
+    margin-top: 8px;
+}

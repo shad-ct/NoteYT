@@ -1,0 +1,63 @@
+{
+    "manifest_version": 3,
+    "name": "NoteYT — YouTube Markdown Notes",
+    "version": "1.0.0",
+    "description": "Write rich markdown notes tied to any YouTube video, with timestamp linking and a full notes library.",
+    "browser_specific_settings": {
+        "gecko": {
+            "id": "noteyt@extension",
+            "strict_min_version": "109.0"
+        }
+    },
+    "icons": {
+        "16": "icons/icon16.png",
+        "48": "icons/icon48.png",
+        "128": "icons/icon128.png"
+    },
+    "action": {
+        "default_icon": {
+            "16": "icons/icon16.png",
+            "48": "icons/icon48.png"
+        },
+        "default_title": "Open NoteYT Library"
+    },
+    "content_scripts": [
+        {
+            "matches": [
+                "*://www.youtube.com/watch*"
+            ],
+            "js": [
+                "content-script.js"
+            ],
+            "css": [
+                "styles/panel.css"
+            ],
+            "run_at": "document_idle"
+        }
+    ],
+    "background": {
+        "scripts": [
+            "background/service-worker.js"
+        ],
+        "type": "module"
+    },
+    "permissions": [
+        "storage",
+        "activeTab",
+        "scripting",
+        "downloads"
+    ],
+    "host_permissions": [
+        "*://www.youtube.com/*"
+    ],
+    "web_accessible_resources": [
+        {
+            "resources": [
+                "styles/panel.css"
+            ],
+            "matches": [
+                "*://www.youtube.com/*"
+            ]
+        }
+    ]
+}

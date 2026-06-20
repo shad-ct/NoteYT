@@ -1,0 +1,438 @@
+/*
+ * panel.css — Content script panel styles
+ *
+ * ALL classes are prefixed with `.ynx-` to create a hard namespace boundary.
+ * This prevents YouTube's CSS from leaking in (it uses generic selectors like
+ * `button`, `input`, `div` with broad specificity) and prevents our styles
+ * from leaking out to YouTube's layout.
+ *
+ * The panel uses CSS custom properties (variables) so the theme is easily
+ * adjustable in one place.
+ */
+
+/* ─── Design tokens ─────────────────────────────────────────────────────────── */
+
+.ynx-panel {
+  --ynx-bg: #0f0f0f;
+  --ynx-bg-surface: #1a1a1a;
+  --ynx-bg-surface-hover: #222222;
+  --ynx-bg-surface-active: #2a2a2a;
+  --ynx-border: #2e2e2e;
+  --ynx-border-subtle: #1e1e1e;
+  --ynx-text: #e8e8e8;
+  --ynx-text-muted: #888888;
+  --ynx-text-placeholder: #555555;
+  --ynx-accent: #3b82f6;
+  --ynx-accent-hover: #2563eb;
+  --ynx-danger: #ef4444;
+  --ynx-danger-hover: #dc2626;
+  --ynx-success: #22c55e;
+  --ynx-ts-chip-bg: #1d3a5f;
+  --ynx-ts-chip-text: #93c5fd;
+  --ynx-ts-chip-hover: #1e40af;
+  --ynx-radius: 8px;
+  --ynx-radius-sm: 4px;
+  --ynx-font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --ynx-font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', Consolas, monospace;
+  --ynx-shadow: 0 1px 3px rgba(0,0,0,0.4), 0 1px 2px rgba(0,0,0,0.3);
+}
+
+/* ─── Panel container ───────────────────────────────────────────────────────── */
+
+.ynx-panel {
+  background: var(--ynx-bg);
+  border: 1px solid var(--ynx-border);
+  border-radius: var(--ynx-radius);
+  font-family: var(--ynx-font);
+  font-size: 13px;
+  color: var(--ynx-text);
+  margin-bottom: 16px;
+  box-shadow: var(--ynx-shadow);
+  width: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
+
+  /* Reset any YouTube styles that might bleed in */
+  line-height: 1.5;
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+.ynx-panel *,
+.ynx-panel *::before,
+.ynx-panel *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+/* ─── Header ────────────────────────────────────────────────────────────────── */
+
+.ynx-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--ynx-border-subtle);
+  background: var(--ynx-bg-surface);
+}
+
+.ynx-panel-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ynx-text);
+  letter-spacing: -0.01em;
+}
+
+.ynx-panel-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* ─── Body ──────────────────────────────────────────────────────────────────── */
+
+.ynx-panel-body {
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* ─── Save indicator ────────────────────────────────────────────────────────── */
+
+.ynx-save-indicator {
+  height: 16px;
+  font-size: 11px;
+  text-align: right;
+  color: var(--ynx-text-muted);
+  transition: color 0.2s ease;
+}
+
+.ynx-save-indicator--saving {
+  color: var(--ynx-text-muted);
+}
+
+.ynx-save-indicator--saved {
+  color: var(--ynx-success);
+}
+
+/* ─── Buttons ───────────────────────────────────────────────────────────────── */
+
+.ynx-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  border: none;
+  border-radius: var(--ynx-radius-sm);
+  cursor: pointer;
+  font-family: var(--ynx-font);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1;
+  padding: 6px 10px;
+  transition: background 0.15s ease, opacity 0.15s ease;
+  white-space: nowrap;
+  text-decoration: none;
+  outline: none;
+}
+
+.ynx-btn:focus-visible {
+  box-shadow: 0 0 0 2px var(--ynx-accent);
+}
+
+.ynx-btn--primary {
+  background: var(--ynx-accent);
+  color: #fff;
+}
+.ynx-btn--primary:hover { background: var(--ynx-accent-hover); }
+
+.ynx-btn--ghost {
+  background: transparent;
+  color: var(--ynx-text-muted);
+  border: 1px solid var(--ynx-border);
+}
+.ynx-btn--ghost:hover {
+  background: var(--ynx-bg-surface-hover);
+  color: var(--ynx-text);
+}
+
+.ynx-btn--danger {
+  background: transparent;
+  color: var(--ynx-danger);
+  border: 1px solid transparent;
+}
+.ynx-btn--danger:hover {
+  background: rgba(239, 68, 68, 0.1);
+  border-color: var(--ynx-danger);
+}
+
+.ynx-btn--sm { padding: 4px 8px; font-size: 11px; }
+.ynx-btn--xs { padding: 2px 6px; font-size: 11px; }
+
+.ynx-add-note-btn {
+  width: 100%;
+  padding: 8px;
+  font-size: 13px;
+}
+
+/* ─── Note card ─────────────────────────────────────────────────────────────── */
+
+.ynx-notes-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.ynx-note-card {
+  background: var(--ynx-bg-surface);
+  border: 1px solid var(--ynx-border);
+  border-radius: var(--ynx-radius);
+  overflow: hidden;
+}
+
+/* ─── Timestamp row ─────────────────────────────────────────────────────────── */
+
+.ynx-note-ts-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--ynx-border-subtle);
+  background: var(--ynx-bg-surface);
+  flex-wrap: wrap;
+}
+
+.ynx-toggle-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  font-size: 11px;
+  color: var(--ynx-text-muted);
+  user-select: none;
+}
+
+.ynx-toggle-label:hover {
+  color: var(--ynx-text);
+}
+
+.ynx-toggle-input {
+  width: 14px;
+  height: 14px;
+  cursor: pointer;
+  accent-color: var(--ynx-accent);
+  margin: 0;
+}
+
+.ynx-ts-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--ynx-ts-chip-bg);
+  color: var(--ynx-ts-chip-text);
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  border-radius: 20px;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 500;
+  font-family: var(--ynx-font-mono);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.ynx-ts-chip:hover {
+  background: var(--ynx-ts-chip-hover);
+}
+
+.ynx-hidden {
+  display: none !important;
+}
+
+/* ─── Toolbar ───────────────────────────────────────────────────────────────── */
+
+.ynx-toolbar-wrap {
+  border-bottom: 1px solid var(--ynx-border-subtle);
+}
+
+.ynx-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  padding: 6px 8px;
+  background: var(--ynx-bg);
+}
+
+.ynx-toolbar-btn {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--ynx-radius-sm);
+  color: var(--ynx-text-muted);
+  cursor: pointer;
+  font-family: var(--ynx-font);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  padding: 4px 7px;
+  transition: background 0.1s, color 0.1s, border-color 0.1s;
+}
+
+.ynx-toolbar-btn:hover {
+  background: var(--ynx-bg-surface-hover);
+  color: var(--ynx-text);
+}
+
+.ynx-toolbar-btn--active {
+  background: var(--ynx-bg-surface-active);
+  color: var(--ynx-accent);
+  border-color: var(--ynx-border);
+}
+
+/* ─── TipTap editor ─────────────────────────────────────────────────────────── */
+
+.ynx-editor-mount {
+  padding: 10px 12px;
+  min-height: 80px;
+  cursor: text;
+}
+
+/* The actual ProseMirror contenteditable div */
+.ynx-editor-content {
+  outline: none;
+  color: var(--ynx-text);
+  line-height: 1.65;
+  font-size: 13px;
+  font-family: var(--ynx-font);
+  min-height: 60px;
+  caret-color: var(--ynx-accent);
+}
+
+.ynx-editor-content p {
+  margin-bottom: 6px;
+}
+
+.ynx-editor-content p:last-child {
+  margin-bottom: 0;
+}
+
+.ynx-editor-content h1 {
+  font-size: 17px;
+  font-weight: 700;
+  margin-bottom: 6px;
+  margin-top: 10px;
+  color: var(--ynx-text);
+}
+
+.ynx-editor-content h2 {
+  font-size: 15px;
+  font-weight: 600;
+  margin-bottom: 4px;
+  margin-top: 8px;
+  color: var(--ynx-text);
+}
+
+.ynx-editor-content h3 {
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 4px;
+  margin-top: 6px;
+  color: var(--ynx-text);
+}
+
+.ynx-editor-content strong { font-weight: 700; }
+.ynx-editor-content em { font-style: italic; }
+.ynx-editor-content del { text-decoration: line-through; color: var(--ynx-text-muted); }
+
+.ynx-editor-content code {
+  background: rgba(255,255,255,0.06);
+  border: 1px solid var(--ynx-border);
+  border-radius: 3px;
+  font-family: var(--ynx-font-mono);
+  font-size: 12px;
+  padding: 1px 4px;
+}
+
+.ynx-editor-content pre {
+  background: #111111;
+  border: 1px solid var(--ynx-border);
+  border-radius: var(--ynx-radius-sm);
+  font-family: var(--ynx-font-mono);
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-x: auto;
+  padding: 10px 12px;
+  margin: 6px 0;
+}
+
+.ynx-editor-content pre code {
+  background: none;
+  border: none;
+  padding: 0;
+}
+
+.ynx-editor-content blockquote {
+  border-left: 3px solid var(--ynx-accent);
+  color: var(--ynx-text-muted);
+  margin: 6px 0;
+  padding: 4px 12px;
+}
+
+.ynx-editor-content ul,
+.ynx-editor-content ol {
+  padding-left: 18px;
+  margin: 4px 0;
+}
+
+.ynx-editor-content li {
+  margin-bottom: 2px;
+}
+
+.ynx-editor-content hr {
+  border: none;
+  border-top: 1px solid var(--ynx-border);
+  margin: 10px 0;
+}
+
+.ynx-editor-content a {
+  color: var(--ynx-accent);
+  text-decoration: underline;
+}
+
+/* Task list checkboxes */
+.ynx-editor-content ul[data-type="taskList"] {
+  list-style: none;
+  padding-left: 4px;
+}
+
+.ynx-editor-content li[data-type="taskItem"] {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.ynx-editor-content li[data-type="taskItem"] input[type="checkbox"] {
+  accent-color: var(--ynx-accent);
+  cursor: pointer;
+  margin-top: 3px;
+  flex-shrink: 0;
+}
+
+/* Placeholder */
+.ynx-editor-content p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  color: var(--ynx-text-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+}
+
+/* ─── Note footer ───────────────────────────────────────────────────────────── */
+
+.ynx-note-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 6px 12px;
+  border-top: 1px solid var(--ynx-border-subtle);
+}

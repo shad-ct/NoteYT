@@ -27,6 +27,7 @@
   --ynx-danger: #ef4444;
   --ynx-danger-hover: #dc2626;
   --ynx-success: #22c55e;
+  --ynx-wl-active: #f59e0b;
   --ynx-ts-chip-bg: #1d3a5f;
   --ynx-ts-chip-text: #93c5fd;
   --ynx-ts-chip-hover: #1e40af;
@@ -93,16 +94,36 @@
 /* ─── Body ──────────────────────────────────────────────────────────────────── */
 
 .ynx-panel-body {
-  padding: 12px 14px;
+  padding: 10px 12px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
+}
+
+/* ─── Footer action row ─────────────────────────────────────────────────────── */
+
+.ynx-panel-footer-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.ynx-add-note-btn {
+  flex: 1;
+  padding: 7px 8px;
+  font-size: 12px;
+}
+
+.ynx-add-ts-btn {
+  flex: 0 0 auto;
+  padding: 7px 10px;
+  font-size: 12px;
 }
 
 /* ─── Save indicator ────────────────────────────────────────────────────────── */
 
 .ynx-save-indicator {
-  height: 16px;
+  height: 14px;
   font-size: 11px;
   text-align: right;
   color: var(--ynx-text-muted);
@@ -132,7 +153,7 @@
   font-weight: 500;
   line-height: 1;
   padding: 6px 10px;
-  transition: background 0.15s ease, opacity 0.15s ease;
+  transition: background 0.15s ease, opacity 0.15s ease, color 0.15s ease;
   white-space: nowrap;
   text-decoration: none;
   outline: none;
@@ -168,28 +189,120 @@
   border-color: var(--ynx-danger);
 }
 
+/* Watch Later active state */
+.ynx-btn--wl-active {
+  color: var(--ynx-wl-active) !important;
+  border-color: var(--ynx-wl-active) !important;
+}
+.ynx-btn--wl-active:hover {
+  background: rgba(245, 158, 11, 0.1) !important;
+}
+
 .ynx-btn--sm { padding: 4px 8px; font-size: 11px; }
 .ynx-btn--xs { padding: 2px 6px; font-size: 11px; }
 
-.ynx-add-note-btn {
-  width: 100%;
-  padding: 8px;
-  font-size: 13px;
-}
-
-/* ─── Note card ─────────────────────────────────────────────────────────────── */
+/* ─── Notes list ────────────────────────────────────────────────────────────── */
 
 .ynx-notes-list {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 6px;
 }
+
+/* ─── Note card ─────────────────────────────────────────────────────────────── */
 
 .ynx-note-card {
   background: var(--ynx-bg-surface);
   border: 1px solid var(--ynx-border);
   border-radius: var(--ynx-radius);
   overflow: hidden;
+  transition: border-color 0.15s;
+}
+
+.ynx-note-card--expanded {
+  border-color: #3a3a3a;
+}
+
+/* ─── Note card header (always visible, clickable to toggle) ─────────────────── */
+
+.ynx-note-card-header {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 10px;
+  cursor: pointer;
+  user-select: none;
+  background: var(--ynx-bg-surface);
+  transition: background 0.12s;
+  min-height: 34px;
+}
+
+.ynx-note-card-header:hover {
+  background: var(--ynx-bg-surface-hover);
+}
+
+/* Toggle chevron button */
+.ynx-note-toggle-btn {
+  background: transparent;
+  border: none;
+  color: var(--ynx-text-muted);
+  cursor: pointer;
+  font-size: 10px;
+  line-height: 1;
+  padding: 2px 3px;
+  flex-shrink: 0;
+  transition: color 0.12s;
+}
+
+.ynx-note-card-header:hover .ynx-note-toggle-btn {
+  color: var(--ynx-text);
+}
+
+/* "Note N" label */
+.ynx-note-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ynx-text-muted);
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+/* Content preview (visible when collapsed) */
+.ynx-note-preview {
+  font-size: 11px;
+  color: var(--ynx-text-muted);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-style: italic;
+  opacity: 0.8;
+}
+
+/* Right section of header */
+.ynx-note-header-right {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.ynx-note-delete-btn {
+  opacity: 0;
+  transition: opacity 0.15s;
+  padding: 2px 5px;
+  font-size: 11px;
+}
+
+.ynx-note-card-header:hover .ynx-note-delete-btn {
+  opacity: 1;
+}
+
+/* ─── Note card body (collapsible) ──────────────────────────────────────────── */
+
+.ynx-note-card-body {
+  border-top: 1px solid var(--ynx-border-subtle);
 }
 
 /* ─── Timestamp row ─────────────────────────────────────────────────────────── */
@@ -198,9 +311,9 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 12px;
+  padding: 6px 10px;
   border-bottom: 1px solid var(--ynx-border-subtle);
-  background: var(--ynx-bg-surface);
+  background: var(--ynx-bg);
   flex-wrap: wrap;
 }
 
@@ -219,13 +332,14 @@
 }
 
 .ynx-toggle-input {
-  width: 14px;
-  height: 14px;
+  width: 13px;
+  height: 13px;
   cursor: pointer;
   accent-color: var(--ynx-accent);
   margin: 0;
 }
 
+/* Timestamp chip */
 .ynx-ts-chip {
   display: inline-flex;
   align-items: center;
@@ -240,6 +354,11 @@
   font-family: var(--ynx-font-mono);
   cursor: pointer;
   transition: background 0.15s;
+}
+
+.ynx-ts-chip--sm {
+  padding: 1px 6px;
+  font-size: 10px;
 }
 
 .ynx-ts-chip:hover {
@@ -260,7 +379,7 @@
   display: flex;
   flex-wrap: wrap;
   gap: 2px;
-  padding: 6px 8px;
+  padding: 5px 8px;
   background: var(--ynx-bg);
 }
 
@@ -274,7 +393,7 @@
   font-size: 11px;
   font-weight: 600;
   line-height: 1;
-  padding: 4px 7px;
+  padding: 3px 6px;
   transition: background 0.1s, color 0.1s, border-color 0.1s;
 }
 
@@ -292,8 +411,8 @@
 /* ─── TipTap editor ─────────────────────────────────────────────────────────── */
 
 .ynx-editor-mount {
-  padding: 10px 12px;
-  min-height: 80px;
+  padding: 8px 10px;
+  min-height: 70px;
   cursor: text;
 }
 
@@ -304,7 +423,7 @@
   line-height: 1.65;
   font-size: 13px;
   font-family: var(--ynx-font);
-  min-height: 60px;
+  min-height: 50px;
   caret-color: var(--ynx-accent);
 }
 
@@ -425,14 +544,4 @@
   float: left;
   height: 0;
   pointer-events: none;
-}
-
-/* ─── Note footer ───────────────────────────────────────────────────────────── */
-
-.ynx-note-footer {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  padding: 6px 12px;
-  border-top: 1px solid var(--ynx-border-subtle);
 }

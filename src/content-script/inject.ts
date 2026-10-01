@@ -37,6 +37,9 @@ import {
     saveVideoRecord,
     upsertNote,
     deleteNote,
+    addToWatchLater,
+    removeFromWatchLater,
+    isInWatchLater,
     type NoteEntry,
     type VideoRecord,
 } from '../lib/storage';
@@ -48,6 +51,7 @@ import { v4 as uuidv4 } from 'uuid';
 /** Currently displayed video context */
 let currentVideoId: string | null = null;
 let currentVideoRecord: VideoRecord | null = null;
+let isWatchLater = false;
 
 /** Draft text in-memory buffer — survives panel re-injection across SPA nav */
 const draftBuffer: Map<string, string> = new Map(); // noteId → markdown draft
@@ -241,32 +245,6 @@ function installKeyboardIsolation(panelRootEl: HTMLElement): void {
     panelRootEl.addEventListener('keydown', handleKeyEvent, opts);
     panelRootEl.addEventListener('keyup', handleKeyEvent, opts);
     panelRootEl.addEventListener('keypress', handleKeyEvent, opts);
-
-    // Verified shortcut checklist — each must type normally in the editor
-    // while NOT triggering the YouTube action when our panel has focus:
-    //
-    // [ ] Space       — inserts space / scrolls paragraph (not play/pause)
-    // [ ] m           — types "m"                (not mute)
-    // [ ] k           — types "k"                (not play/pause)
-    // [ ] j           — types "j"                (not seek -10s)
-    // [ ] l           — types "l"                (not seek +10s)
-    // [ ] 0-9         — types digit              (not seek to N0%)
-    // [ ] f           — types "f"                (not fullscreen)
-    // [ ] c           — types "c"                (not captions)
-    // [ ] t           — types "t"                (not theater mode)
-    // [ ] i           — types "i"                (not miniplayer)
-    // [ ] ?  /        — types char               (not shortcuts help / search)
-    // [ ] ArrowLeft   — moves cursor             (not seek -5s)
-    // [ ] ArrowRight  — moves cursor             (not seek +5s)
-    // [ ] ArrowUp     — moves cursor/list        (not volume up)
-    // [ ] ArrowDown   — moves cursor/list        (not volume down)
-    // [ ] Home        — moves to line start      (not seek to 0%)
-    // [ ] End         — moves to line end        (not seek to 100%)
-    // [ ] Ctrl+A      — select all in editor     (works normally)
-    // [ ] Ctrl+Z      — undo in TipTap           (works normally)
-    // [ ] Ctrl+B      — bold in TipTap           (works normally)
-    // [ ] Ctrl+V      — paste into editor        (works normally)
-    // [ ] Escape      — blurs editor             (YouTube hotkeys resume)
 }
 
 // ─── Panel DOM construction ───────────────────────────────────────────────────
@@ -305,6 +283,29 @@ function buildPanel(): HTMLElement {
 
     const headerActions = document.createElement('div');
     headerActions.className = 'ynx-panel-header-actions';
+
+    // Mark button (placeholder — original button from screenshot)
+    const markBtn = document.createElement('button');
+    markBtn.className = 'ynx-btn ynx-btn--ghost ynx-btn--sm';
+    markBtn.textContent = '◎ Mark';
+    markBtn.title = 'Mark current timestamp';
+    markBtn.addEventListener('click', () => {
+        const t = captureTimestamp();
+        if (t !== null) {
+            setSaveIndicator('saved');
+            setTimeout(() => setSaveIndicator('idle'), 2000);
+        }
+    });
+    headerActions.appendChild(markBtn);
+
+    // Watch Later button
+    const watchLaterBtn = document.createElement('button');
+    watchLaterBtn.id = 'ynx-watch-later-btn';
+    watchLaterBtn.className = 'ynx-btn ynx-btn--ghost ynx-btn--sm';
+    watchLaterBtn.textContent = '🕐 Watch Later';
+    watchLaterBtn.title = 'Save this video to Watch Later';
+    watchLaterBtn.addEventListener('click', handleWatchLater);
+    headerActions.appendChild(watchLaterBtn);
 
     // Export button
     const exportBtn = document.createElement('button');
@@ -351,13 +352,26 @@ function buildPanel(): HTMLElement {
     notesList.id = 'ynx-notes-list';
     body.appendChild(notesList);
 
+    // ── Footer action row ───────────────────────────────────────────────────
+    const footerRow = document.createElement('div');
+    footerRow.className = 'ynx-panel-footer-row';
+
     // "Add note" button
     const addBtn = document.createElement('button');
     addBtn.className = 'ynx-btn ynx-btn--primary ynx-add-note-btn';
     addBtn.textContent = '+ Add Note';
     addBtn.addEventListener('click', handleAddNote);
-    body.appendChild(addBtn);
+    footerRow.appendChild(addBtn);
 
+    // "+ Timestamp" button (adds a note pre-pinned to current timestamp)
+    const tsNoteBtn = document.createElement('button');
+    tsNoteBtn.className = 'ynx-btn ynx-btn--ghost ynx-add-ts-btn';
+    tsNoteBtn.innerHTML = '+ ⏱ Timestamp';
+    tsNoteBtn.title = 'Add a new note pinned to current timestamp';
+    tsNoteBtn.addEventListener('click', handleAddTimestampNote);
+    footerRow.appendChild(tsNoteBtn);
+
+    body.appendChild(footerRow);
     panel.appendChild(body);
 
     // ── Collapse/expand logic ───────────────────────────────────────────────
@@ -370,10 +384,6 @@ function buildPanel(): HTMLElement {
     });
 
     // Install keyboard isolation ONCE on this panel instance.
-    // Must happen before the panel is inserted into the DOM so no keystrokes
-    // can slip through during the brief window between insertion and listener
-    // attachment (the bubble phase only fires after the target is in the DOM,
-    // so this ordering is safe — but doing it early is cleaner practice).
     installKeyboardIsolation(panel);
 
     return panel;
@@ -381,16 +391,92 @@ function buildPanel(): HTMLElement {
 
 // ─── Note card rendering ──────────────────────────────────────────────────────
 
+let noteCounter = 0; // increments per card so we can label "Note 1", "Note 2"...
+
 /**
  * Render a single note card into the notes list.
- * Each card has: timestamp toggle, TipTap editor, save indicator, delete button.
+ * Each card now has a compact header row (toggleable) + collapsible body.
+ *
+ * Collapsed state shows: chevron + note number + content preview + ts chip + delete
+ * Expanded state shows: toolbar + full TipTap editor
+ *
+ * @param note        The NoteEntry data
+ * @param container   The #ynx-notes-list element
+ * @param startExpanded  If true, start expanded (default for new notes)
  */
-function renderNoteCard(note: NoteEntry, container: HTMLElement): void {
+function renderNoteCard(
+    note: NoteEntry,
+    container: HTMLElement,
+    startExpanded = false
+): void {
+    noteCounter++;
+    const cardIndex = noteCounter;
+
     const card = document.createElement('div');
     card.className = 'ynx-note-card';
     card.dataset.noteId = note.id;
 
-    // ── Timestamp row ────────────────────────────────────────────────────────
+    // ── Card Header (always visible) ─────────────────────────────────────────
+    const cardHeader = document.createElement('div');
+    cardHeader.className = 'ynx-note-card-header';
+
+    // Toggle chevron
+    const toggleBtn = document.createElement('button');
+    toggleBtn.type = 'button';
+    toggleBtn.className = 'ynx-note-toggle-btn';
+    toggleBtn.setAttribute('aria-label', 'Toggle note');
+
+    // Note label
+    const noteLabel = document.createElement('span');
+    noteLabel.className = 'ynx-note-label';
+    noteLabel.textContent = `Note ${cardIndex}`;
+
+    // Timestamp chip (compact, in header)
+    const tsChipHeader = document.createElement('button');
+    tsChipHeader.type = 'button';
+    tsChipHeader.className = 'ynx-ts-chip ynx-ts-chip--sm' + (note.timestampEnabled ? '' : ' ynx-hidden');
+    tsChipHeader.title = 'Click to seek to this moment';
+    updateTimestampChip(tsChipHeader, note.timestampSeconds);
+    tsChipHeader.addEventListener('click', (e) => {
+        e.stopPropagation(); // don't toggle the card
+        if (note.timestampSeconds !== null) seekTo(note.timestampSeconds);
+    });
+
+    // Content preview (shown when collapsed)
+    const preview = document.createElement('span');
+    preview.className = 'ynx-note-preview';
+    const previewText = note.markdown.replace(/[#*`>\-_~\[\]()]/g, '').trim();
+    preview.textContent = previewText.slice(0, 60) || 'Empty note…';
+
+    // Header right side
+    const headerRight = document.createElement('div');
+    headerRight.className = 'ynx-note-header-right';
+
+    // Delete button (in header)
+    const deleteBtn = document.createElement('button');
+    deleteBtn.type = 'button';
+    deleteBtn.className = 'ynx-btn ynx-btn--danger ynx-btn--xs ynx-note-delete-btn';
+    deleteBtn.textContent = '🗑';
+    deleteBtn.title = 'Delete this note';
+    deleteBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        handleDeleteNote(note.id, card);
+    });
+    headerRight.appendChild(deleteBtn);
+
+    cardHeader.appendChild(toggleBtn);
+    cardHeader.appendChild(noteLabel);
+    cardHeader.appendChild(tsChipHeader);
+    cardHeader.appendChild(preview);
+    cardHeader.appendChild(headerRight);
+
+    card.appendChild(cardHeader);
+
+    // ── Card Body (collapsible) ───────────────────────────────────────────────
+    const cardBody = document.createElement('div');
+    cardBody.className = 'ynx-note-card-body';
+
+    // ── Timestamp row (inside body) ──────────────────────────────────────────
     const tsRow = document.createElement('div');
     tsRow.className = 'ynx-note-ts-row';
 
@@ -410,21 +496,6 @@ function renderNoteCard(note: NoteEntry, container: HTMLElement): void {
     tsToggle.appendChild(tsText);
     tsRow.appendChild(tsToggle);
 
-    // Timestamp chip (shown when enabled)
-    const tsChip = document.createElement('button');
-    tsChip.type = 'button';
-    tsChip.className = 'ynx-ts-chip' + (note.timestampEnabled ? '' : ' ynx-hidden');
-    tsChip.title = 'Click to seek to this moment';
-    updateTimestampChip(tsChip, note.timestampSeconds);
-
-    // Clicking the chip seeks the video
-    tsChip.addEventListener('click', () => {
-        if (note.timestampSeconds !== null) {
-            seekTo(note.timestampSeconds);
-        }
-    });
-    tsRow.appendChild(tsChip);
-
     // Re-capture timestamp button (re-pins to current time)
     const recaptureBtn = document.createElement('button');
     recaptureBtn.type = 'button';
@@ -435,7 +506,7 @@ function renderNoteCard(note: NoteEntry, container: HTMLElement): void {
     recaptureBtn.addEventListener('click', () => {
         const t = captureTimestamp();
         note.timestampSeconds = t;
-        updateTimestampChip(tsChip, t);
+        updateTimestampChip(tsChipHeader, t);
         scheduleSave(note.id);
     });
     tsRow.appendChild(recaptureBtn);
@@ -446,26 +517,25 @@ function renderNoteCard(note: NoteEntry, container: HTMLElement): void {
         if (tsCheckbox.checked) {
             const t = captureTimestamp();
             note.timestampSeconds = t;
-            updateTimestampChip(tsChip, t);
-            tsChip.classList.remove('ynx-hidden');
+            updateTimestampChip(tsChipHeader, t);
+            tsChipHeader.classList.remove('ynx-hidden');
             recaptureBtn.classList.remove('ynx-hidden');
         } else {
             note.timestampSeconds = null;
-            tsChip.classList.add('ynx-hidden');
+            updateTimestampChip(tsChipHeader, null);
+            tsChipHeader.classList.add('ynx-hidden');
             recaptureBtn.classList.add('ynx-hidden');
         }
         scheduleSave(note.id);
     });
 
-    card.appendChild(tsRow);
+    cardBody.appendChild(tsRow);
 
     // ── Editor mount point ───────────────────────────────────────────────────
     const editorWrap = document.createElement('div');
     editorWrap.className = 'ynx-editor-wrap';
-    card.appendChild(editorWrap);
 
-    // Toolbar (inserted before the editor div by TipTap's mount)
-    // We build it after creating the editor so we can pass the instance
+    // Toolbar placeholder
     const toolbarPlaceholder = document.createElement('div');
     toolbarPlaceholder.className = 'ynx-toolbar-wrap';
     editorWrap.appendChild(toolbarPlaceholder);
@@ -485,6 +555,9 @@ function renderNoteCard(note: NoteEntry, container: HTMLElement): void {
             // Buffer the draft immediately
             draftBuffer.set(note.id, md);
             note.markdown = md;
+            // Update preview text
+            const rawPreview = md.replace(/[#*`>\-_~\[\]()]/g, '').trim();
+            preview.textContent = rawPreview.slice(0, 60) || 'Empty note…';
             // Debounce the actual storage write
             scheduleSave(note.id);
         },
@@ -492,22 +565,48 @@ function renderNoteCard(note: NoteEntry, container: HTMLElement): void {
 
     activeEditors.set(note.id, noteEditor);
 
-    // Now build toolbar with the live editor reference
+    // Build toolbar with the live editor reference
     const toolbar = createToolbar(noteEditor);
     toolbarPlaceholder.appendChild(toolbar);
 
-    // ── Card footer ──────────────────────────────────────────────────────────
-    const footer = document.createElement('div');
-    footer.className = 'ynx-note-footer';
+    cardBody.appendChild(editorWrap);
+    card.appendChild(cardBody);
 
-    const deleteBtn = document.createElement('button');
-    deleteBtn.type = 'button';
-    deleteBtn.className = 'ynx-btn ynx-btn--danger ynx-btn--xs';
-    deleteBtn.textContent = '🗑 Delete note';
-    deleteBtn.addEventListener('click', () => handleDeleteNote(note.id, card));
-    footer.appendChild(deleteBtn);
+    // ── Collapse/expand toggle logic ─────────────────────────────────────────
+    let expanded = startExpanded;
 
-    card.appendChild(footer);
+    function applyCollapseState(): void {
+        if (expanded) {
+            toggleBtn.textContent = '▼';
+            cardBody.style.display = '';
+            preview.style.display = 'none';
+            card.classList.add('ynx-note-card--expanded');
+        } else {
+            toggleBtn.textContent = '▶';
+            cardBody.style.display = 'none';
+            preview.style.display = '';
+            card.classList.remove('ynx-note-card--expanded');
+        }
+    }
+
+    const toggleExpand = (): void => {
+        expanded = !expanded;
+        applyCollapseState();
+    };
+
+    // Clicking header toggles expand (but not the buttons inside headerRight or tsChip)
+    cardHeader.addEventListener('click', (e) => {
+        if ((e.target as HTMLElement).closest('.ynx-note-header-right, .ynx-ts-chip')) return;
+        toggleExpand();
+    });
+    toggleBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        toggleExpand();
+    });
+
+    // Apply initial state
+    applyCollapseState();
+
     container.appendChild(card);
 }
 
@@ -536,10 +635,30 @@ async function handleAddNote(): Promise<void> {
     currentVideoRecord.notes.push(note);
 
     const container = document.getElementById('ynx-notes-list');
-    if (container) renderNoteCard(note, container);
+    if (container) renderNoteCard(note, container, true /* startExpanded */);
 
-    // Persist immediately (no debounce — this is a structural change)
-    await saveCurrentRecord();
+    // Don't persist immediately — new empty note would be filtered out.
+    // It'll be saved when the user types something (via scheduleSave).
+}
+
+async function handleAddTimestampNote(): Promise<void> {
+    if (!currentVideoId || !currentVideoRecord) return;
+
+    const t = captureTimestamp();
+    const now = new Date().toISOString();
+    const note: NoteEntry = {
+        id: uuidv4(),
+        markdown: '',
+        timestampEnabled: true,
+        timestampSeconds: t,
+        createdAt: now,
+        updatedAt: now,
+    };
+
+    currentVideoRecord.notes.push(note);
+
+    const container = document.getElementById('ynx-notes-list');
+    if (container) renderNoteCard(note, container, true /* startExpanded */);
 }
 
 async function handleDeleteNote(
@@ -569,6 +688,35 @@ function handleExport(): void {
     exportSingleVideo(currentVideoId, currentVideoRecord);
 }
 
+async function handleWatchLater(): Promise<void> {
+    if (!currentVideoId) return;
+
+    const btn = document.getElementById('ynx-watch-later-btn') as HTMLButtonElement | null;
+    if (!btn) return;
+
+    if (isWatchLater) {
+        await removeFromWatchLater(currentVideoId);
+        isWatchLater = false;
+        btn.textContent = '🕐 Watch Later';
+        btn.classList.remove('ynx-btn--wl-active');
+        btn.title = 'Save this video to Watch Later';
+    } else {
+        await addToWatchLater(currentVideoId, {
+            title: getVideoTitle(),
+            channel: getChannelName(),
+            url: window.location.href,
+        });
+        isWatchLater = true;
+        btn.textContent = '✓ Saved';
+        btn.classList.add('ynx-btn--wl-active');
+        btn.title = 'Remove from Watch Later';
+        // Revert label text after 2s but keep active state
+        setTimeout(() => {
+            if (isWatchLater && btn) btn.textContent = '🕐 Saved ✓';
+        }, 2000);
+    }
+}
+
 // ─── Auto-save / debounce ─────────────────────────────────────────────────────
 
 const SAVE_DEBOUNCE_MS = 800;
@@ -586,6 +734,13 @@ function scheduleSave(_noteId: string): void {
 
 async function saveCurrentRecord(): Promise<void> {
     if (!currentVideoId || !currentVideoRecord) return;
+
+    // Only save if there is at least one non-empty note
+    const hasContent = currentVideoRecord.notes.some(
+        (n) => n.markdown.trim().length > 0
+    );
+    if (!hasContent) return; // nothing worth persisting
+
     // Stamp updatedAt on all notes before persisting
     for (const note of currentVideoRecord.notes) {
         note.updatedAt = new Date().toISOString();
@@ -603,7 +758,7 @@ function setSaveIndicator(state: 'idle' | 'saving' | 'saved'): void {
         el.textContent = '● Saving…';
         el.className = 'ynx-save-indicator ynx-save-indicator--saving';
     } else {
-        el.textContent = '✓ Saved';
+        el.textContent = '✓ Saved · Markdown synced';
         el.className = 'ynx-save-indicator ynx-save-indicator--saved';
     }
 }
@@ -635,6 +790,21 @@ async function loadVideoData(videoId: string): Promise<void> {
     currentVideoRecord.channel = meta.channel;
     currentVideoRecord.url = meta.url;
 
+    // Load Watch Later state and update button
+    isWatchLater = await isInWatchLater(videoId);
+    const wlBtn = document.getElementById('ynx-watch-later-btn') as HTMLButtonElement | null;
+    if (wlBtn) {
+        if (isWatchLater) {
+            wlBtn.textContent = '🕐 Saved ✓';
+            wlBtn.classList.add('ynx-btn--wl-active');
+            wlBtn.title = 'Remove from Watch Later';
+        } else {
+            wlBtn.textContent = '🕐 Watch Later';
+            wlBtn.classList.remove('ynx-btn--wl-active');
+            wlBtn.title = 'Save this video to Watch Later';
+        }
+    }
+
     // Re-render notes list
     const container = document.getElementById('ynx-notes-list');
     if (!container) return;
@@ -645,9 +815,13 @@ async function loadVideoData(videoId: string): Promise<void> {
         activeEditors.delete(id);
     }
     container.innerHTML = '';
+    noteCounter = 0; // reset counter for this video
 
+    // Always render the list (even if empty — shows "+ Add Note" button below)
     for (const note of currentVideoRecord.notes) {
-        renderNoteCard(note, container);
+        // Collapse already-saved notes that have content; expand empty ones
+        const hasContent = note.markdown.trim().length > 0;
+        renderNoteCard(note, container, !hasContent);
     }
 }
 
@@ -659,16 +833,12 @@ async function injectPanel(videoId: string): Promise<void> {
     const secondary = getSecondaryColumn();
     if (!secondary) {
         // #secondary not in DOM yet — retry in 500ms
-        // This can happen on very fast SPA transitions where the new DOM
-        // hasn't fully rendered when yt-navigate-finish fires.
         setTimeout(() => injectPanel(videoId), 500);
         return;
     }
 
     if (!isPanelInjected()) {
         const panel = buildPanel();
-        // Insert BEFORE the first child of #secondary so our panel appears
-        // above the recommended videos, not replacing them.
         secondary.insertBefore(panel, secondary.firstChild);
     }
 
@@ -679,9 +849,6 @@ async function injectPanel(videoId: string): Promise<void> {
 
 /**
  * Handle each YouTube navigation (initial load + SPA transitions).
- *
- * We guard with currentVideoId so navigating to the SAME video (e.g. clicking
- * the title link) doesn't needlessly re-render and wipe unsaved edits.
  */
 async function onYouTubeNavigate(): Promise<void> {
     // Only run on watch pages
@@ -703,54 +870,20 @@ async function onYouTubeNavigate(): Promise<void> {
 
 /**
  * PRIMARY: Listen for YouTube's own `yt-navigate-finish` event.
- *
- * YouTube fires this on `document` after every SPA navigation completes —
- * both initial load and subsequent video switches. It's the most reliable
- * signal because it's YouTube's own internal event, not a browser API.
- *
- * If this ever breaks: open DevTools and run:
- *   document.addEventListener('yt-navigate-finish', e => console.log(e))
- * If it no longer fires, switch to the MutationObserver fallback below.
  */
 document.addEventListener('yt-navigate-finish', onYouTubeNavigate);
 
 /**
- * FALLBACK: Also handle the initial page load (yt-navigate-finish may not
- * fire on cold load if the script runs late, depending on run_at timing).
+ * FALLBACK: Also handle the initial page load.
  */
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', onYouTubeNavigate);
 } else {
-    // Already past DOMContentLoaded — run immediately
     onYouTubeNavigate();
 }
 
 /**
- * FALLBACK (secondary): MutationObserver on #secondary.
- *
- * If `yt-navigate-finish` ever stops firing, uncomment this block.
- * It watches for YouTube to clear and rebuild #secondary, which reliably
- * happens on every video navigation. Debounced to 300ms to avoid firing
- * during partial DOM updates.
- *
- * const secondary = document.querySelector('#secondary');
- * if (secondary) {
- *   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
- *   const obs = new MutationObserver(() => {
- *     if (debounceTimer) clearTimeout(debounceTimer);
- *     debounceTimer = setTimeout(() => {
- *       if (!isPanelInjected()) onYouTubeNavigate();
- *     }, 300);
- *   });
- *   obs.observe(secondary, { childList: true, subtree: false });
- * }
- */
-
-/**
- * Re-injection guard: YouTube sometimes aggressively re-renders #secondary
- * mid-session (e.g. when the sidebar lazy-loads more suggestions). A
- * lightweight periodic check ensures the panel stays present without
- * being as expensive as a broad MutationObserver.
+ * Re-injection guard: keeps panel present even if YouTube re-renders #secondary.
  */
 setInterval(() => {
     if (

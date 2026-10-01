@@ -2,32 +2,42 @@
  * notes-library.ts — Library page script
  *
  * Client-side "routing":
- *   - Default view: grid of video cards
+ *   - Default view: grid of video cards (with Watch Later section above)
  *   - Detail view: all notes for a selected video (push state to avoid full reload)
  *
- * Zip export strategy (all videos):
+ * Zip export strategy (all videos / selected videos):
  *   JSZip is imported here (not in the content script) so it only lands in
  *   the library bundle, keeping the content-script bundle lean.
- *   One .md file per video in the zip → cleaner than a single combined file
- *   when you have 20+ videos and want to move files around.
  */
 
 import JSZip from 'jszip';
-import { getAllVideos, deleteVideoRecord, type VideosMap, type VideoRecord } from '../lib/storage';
+import {
+    getAllVideos,
+    deleteVideoRecord,
+    getWatchLater,
+    removeFromWatchLater,
+    type VideosMap,
+    type VideoRecord,
+    type WatchLaterEntry,
+} from '../lib/storage';
 import { renderVideoToMarkdown, exportSingleVideo } from '../lib/export-md';
 
 // ─── State ────────────────────────────────────────────────────────────────────
 
 let allVideos: VideosMap = {};
+let watchLaterList: WatchLaterEntry[] = [];
 let searchQuery = '';
 type SortKey = 'lastEdited' | 'noteCount' | 'title';
 let sortKey: SortKey = 'lastEdited';
 let currentDetailVideoId: string | null = null;
 
+/** IDs currently selected in the grid (Fix #5) */
+const selectedIds = new Set<string>();
+
 // ─── Bootstrap ────────────────────────────────────────────────────────────────
 
 async function init(): Promise<void> {
-    allVideos = await getAllVideos();
+    [allVideos, watchLaterList] = await Promise.all([getAllVideos(), getWatchLater()]);
 
     // Check URL hash for direct detail link (e.g. #video=dQw4w9WgXcQ)
     const hash = window.location.hash;
@@ -53,6 +63,7 @@ async function init(): Promise<void> {
 
 function renderLibraryView(): void {
     currentDetailVideoId = null;
+    selectedIds.clear();
     const app = document.getElementById('app')!;
     app.innerHTML = '';
 
@@ -69,12 +80,14 @@ function renderLibraryView(): void {
 
     const searchInput = document.createElement('input');
     searchInput.type = 'search';
+    searchInput.id = 'lib-search';
     searchInput.className = 'lib-search';
     searchInput.placeholder = 'Search by title or channel…';
     searchInput.value = searchQuery;
     searchInput.addEventListener('input', () => {
         searchQuery = searchInput.value;
         renderGrid(gridContainer);
+        updateSelectionBar();
     });
 
     const sortSelect = document.createElement('select');
@@ -112,19 +125,74 @@ function renderLibraryView(): void {
         `${videoCount} video${videoCount !== 1 ? 's' : ''} with notes`
     );
 
+    // ── Watch Later section ──────────────────────────────────────────────────
+    let watchLaterSection: HTMLElement | null = null;
+    if (watchLaterList.length > 0) {
+        watchLaterSection = buildWatchLaterSection();
+    }
+
+    // ── Selection toolbar (Fix #5) ───────────────────────────────────────────
+    const selectionBar = createElement('div', 'lib-selection-bar lib-selection-bar--hidden');
+    selectionBar.id = 'lib-selection-bar';
+
+    const selectAllChk = document.createElement('input');
+    selectAllChk.type = 'checkbox';
+    selectAllChk.id = 'lib-select-all';
+    selectAllChk.className = 'lib-select-all-chk';
+    selectAllChk.title = 'Select all';
+    selectAllChk.addEventListener('change', () => {
+        const entries = getFilteredEntries();
+        if (selectAllChk.checked) {
+            entries.forEach(([id]) => selectedIds.add(id));
+        } else {
+            selectedIds.clear();
+        }
+        renderGrid(gridContainer);
+        updateSelectionBar();
+    });
+
+    const selectAllLabel = document.createElement('label');
+    selectAllLabel.htmlFor = 'lib-select-all';
+    selectAllLabel.textContent = 'Select all';
+    selectAllLabel.className = 'lib-selection-label';
+
+    const selCountSpan = createElement('span', 'lib-sel-count', '0 selected');
+    selCountSpan.id = 'lib-sel-count';
+
+    const exportSelBtn = createElement('button', 'lib-btn lib-btn--ghost lib-btn--sm', '⬇ Export Selected');
+    exportSelBtn.addEventListener('click', handleExportSelected);
+
+    const deleteSelBtn = createElement('button', 'lib-btn lib-btn--danger lib-btn--sm', '🗑 Delete Selected');
+    deleteSelBtn.addEventListener('click', () => handleDeleteSelected(gridContainer));
+
+    const clearSelBtn = createElement('button', 'lib-btn lib-btn--ghost lib-btn--sm lib-sel-clear', '✕ Clear');
+    clearSelBtn.addEventListener('click', () => {
+        selectedIds.clear();
+        (document.getElementById('lib-select-all') as HTMLInputElement | null)!.checked = false;
+        renderGrid(gridContainer);
+        updateSelectionBar();
+    });
+
+    selectionBar.appendChild(selectAllChk);
+    selectionBar.appendChild(selectAllLabel);
+    selectionBar.appendChild(selCountSpan);
+    selectionBar.appendChild(exportSelBtn);
+    selectionBar.appendChild(deleteSelBtn);
+    selectionBar.appendChild(clearSelBtn);
+
     const gridContainer = createElement('div', 'lib-grid');
 
     app.appendChild(header);
     app.appendChild(controls);
     app.appendChild(stats);
+    if (watchLaterSection) app.appendChild(watchLaterSection);
+    app.appendChild(selectionBar);
     app.appendChild(gridContainer);
 
     renderGrid(gridContainer);
 }
 
-function renderGrid(container: HTMLElement): void {
-    container.innerHTML = '';
-
+function getFilteredEntries(): Array<[string, VideoRecord]> {
     const query = searchQuery.toLowerCase();
     let entries = Object.entries(allVideos).filter(([, record]) => {
         if (!query) return true;
@@ -134,7 +202,6 @@ function renderGrid(container: HTMLElement): void {
         );
     });
 
-    // Sort
     entries = entries.sort(([, a], [, b]) => {
         if (sortKey === 'lastEdited') {
             return new Date(b.lastEdited).getTime() - new Date(a.lastEdited).getTime();
@@ -142,9 +209,39 @@ function renderGrid(container: HTMLElement): void {
         if (sortKey === 'noteCount') {
             return b.notes.length - a.notes.length;
         }
-        // alphabetical
         return a.title.localeCompare(b.title);
     });
+
+    return entries;
+}
+
+function updateSelectionBar(): void {
+    const bar = document.getElementById('lib-selection-bar');
+    const countSpan = document.getElementById('lib-sel-count');
+    const selectAllChk = document.getElementById('lib-select-all') as HTMLInputElement | null;
+    if (!bar || !countSpan) return;
+
+    const count = selectedIds.size;
+    const totalEntries = getFilteredEntries().length;
+
+    if (count > 0) {
+        bar.classList.remove('lib-selection-bar--hidden');
+    } else {
+        bar.classList.add('lib-selection-bar--hidden');
+    }
+
+    countSpan.textContent = `${count} selected`;
+
+    if (selectAllChk) {
+        selectAllChk.indeterminate = count > 0 && count < totalEntries;
+        selectAllChk.checked = count > 0 && count === totalEntries;
+    }
+}
+
+function renderGrid(container: HTMLElement): void {
+    container.innerHTML = '';
+
+    const entries = getFilteredEntries();
 
     if (entries.length === 0) {
         const empty = createElement('div', 'lib-empty', searchQuery
@@ -161,10 +258,32 @@ function renderGrid(container: HTMLElement): void {
 }
 
 function buildVideoCard(videoId: string, record: VideoRecord): HTMLElement {
-    const card = createElement('div', 'lib-card');
+    const card = createElement('div', 'lib-card' + (selectedIds.has(videoId) ? ' lib-card--selected' : ''));
     card.setAttribute('role', 'button');
     card.setAttribute('tabindex', '0');
     card.setAttribute('aria-label', `View notes for ${record.title}`);
+    card.dataset.videoId = videoId;
+
+    // Selection checkbox (Fix #5)
+    const chkWrapper = createElement('div', 'lib-card-chk-wrap');
+    const chk = document.createElement('input');
+    chk.type = 'checkbox';
+    chk.className = 'lib-card-chk';
+    chk.checked = selectedIds.has(videoId);
+    chk.setAttribute('aria-label', `Select ${record.title}`);
+    chk.addEventListener('change', (e) => {
+        e.stopPropagation();
+        if (chk.checked) {
+            selectedIds.add(videoId);
+            card.classList.add('lib-card--selected');
+        } else {
+            selectedIds.delete(videoId);
+            card.classList.remove('lib-card--selected');
+        }
+        updateSelectionBar();
+    });
+    chkWrapper.appendChild(chk);
+    card.appendChild(chkWrapper);
 
     const thumb = createElement('div', 'lib-card-thumb');
     const img = document.createElement('img');
@@ -194,11 +313,87 @@ function buildVideoCard(videoId: string, record: VideoRecord): HTMLElement {
     const openDetail = () => {
         window.location.hash = `#video=${videoId}`;
     };
-    card.addEventListener('click', openDetail);
+    card.addEventListener('click', (e) => {
+        // Don't navigate if clicking the checkbox area
+        if ((e.target as HTMLElement).closest('.lib-card-chk-wrap')) return;
+        openDetail();
+    });
     card.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' || e.key === ' ') openDetail();
     });
 
+    return card;
+}
+
+// ─── Watch Later section ──────────────────────────────────────────────────────
+
+function buildWatchLaterSection(): HTMLElement {
+    const section = createElement('div', 'lib-wl-section');
+
+    const sectionHeader = createElement('div', 'lib-wl-header');
+    const sectionTitle = createElement('h2', 'lib-wl-title', '🕐 Watch Later');
+    const sectionCount = createElement('span', 'lib-wl-count', `${watchLaterList.length}`);
+    sectionHeader.appendChild(sectionTitle);
+    sectionHeader.appendChild(sectionCount);
+    section.appendChild(sectionHeader);
+
+    const grid = createElement('div', 'lib-wl-grid');
+
+    for (const entry of watchLaterList) {
+        grid.appendChild(buildWatchLaterCard(entry, grid, section));
+    }
+
+    section.appendChild(grid);
+    return section;
+}
+
+function buildWatchLaterCard(
+    entry: WatchLaterEntry,
+    grid: HTMLElement,
+    section: HTMLElement
+): HTMLElement {
+    const card = createElement('div', 'lib-wl-card');
+
+    const thumb = createElement('div', 'lib-wl-thumb');
+    const img = document.createElement('img');
+    img.src = `https://img.youtube.com/vi/${entry.videoId}/hqdefault.jpg`;
+    img.alt = entry.title;
+    img.loading = 'lazy';
+    img.className = 'lib-wl-img';
+    thumb.appendChild(img);
+    card.appendChild(thumb);
+
+    const body = createElement('div', 'lib-wl-body');
+    const titleEl = createElement('p', 'lib-wl-card-title', entry.title);
+    const channelEl = createElement('p', 'lib-wl-card-channel', entry.channel);
+    const addedEl = createElement('p', 'lib-wl-added', `Added ${formatRelativeDate(entry.addedAt)}`);
+    body.appendChild(titleEl);
+    body.appendChild(channelEl);
+    body.appendChild(addedEl);
+    card.appendChild(body);
+
+    const actions = createElement('div', 'lib-wl-actions');
+
+    const openBtn = createElement('a', 'lib-btn lib-btn--primary lib-btn--sm', '▶ Watch');
+    (openBtn as HTMLAnchorElement).href = entry.url;
+    (openBtn as HTMLAnchorElement).target = '_blank';
+    (openBtn as HTMLAnchorElement).rel = 'noopener';
+    actions.appendChild(openBtn);
+
+    const removeBtn = createElement('button', 'lib-btn lib-btn--ghost lib-btn--sm', '✕ Remove');
+    removeBtn.addEventListener('click', async () => {
+        await removeFromWatchLater(entry.videoId);
+        watchLaterList = watchLaterList.filter((e) => e.videoId !== entry.videoId);
+        card.remove();
+        // Update count
+        const countEl = section.querySelector('.lib-wl-count');
+        if (countEl) countEl.textContent = `${watchLaterList.length}`;
+        // Hide section if empty
+        if (watchLaterList.length === 0) section.remove();
+    });
+    actions.appendChild(removeBtn);
+
+    card.appendChild(actions);
     return card;
 }
 
@@ -308,8 +503,6 @@ function buildNoteCard(
     }
 
     // Render markdown as HTML using a simple parser
-    // We use a lightweight inline renderer here (no TipTap in the library page)
-    // to keep the library bundle small. The content is display-only.
     const content = createElement('div', 'lib-note-content');
     content.innerHTML = renderMarkdownToHtml(note.markdown);
     card.appendChild(content);
@@ -322,7 +515,7 @@ function buildNoteCard(
     return card;
 }
 
-// ─── Export all ───────────────────────────────────────────────────────────────
+// ─── Export handlers ──────────────────────────────────────────────────────────
 
 async function handleExportAll(): Promise<void> {
     const entries = Object.entries(allVideos);
@@ -336,12 +529,54 @@ async function handleExportAll(): Promise<void> {
         zip.file(filename, md);
     }
 
+    await downloadZip(zip, 'noteyt-export-all');
+}
+
+async function handleExportSelected(): Promise<void> {
+    if (selectedIds.size === 0) return;
+
+    const zip = new JSZip();
+
+    for (const videoId of selectedIds) {
+        const record = allVideos[videoId];
+        if (!record) continue;
+        const md = renderVideoToMarkdown(videoId, record);
+        const filename = slugify(record.title) + '.md';
+        zip.file(filename, md);
+    }
+
+    await downloadZip(zip, `noteyt-export-${selectedIds.size}-videos`);
+}
+
+async function handleDeleteSelected(gridContainer: HTMLElement): Promise<void> {
+    if (selectedIds.size === 0) return;
+
+    const count = selectedIds.size;
+    if (!confirm(`Delete all notes for ${count} selected video${count !== 1 ? 's' : ''}? This cannot be undone.`)) return;
+
+    for (const videoId of selectedIds) {
+        await deleteVideoRecord(videoId);
+        delete allVideos[videoId];
+    }
+    selectedIds.clear();
+    renderGrid(gridContainer);
+    updateSelectionBar();
+
+    // Update stats
+    const statsEl = document.querySelector('.lib-stats');
+    if (statsEl) {
+        const vc = Object.keys(allVideos).length;
+        statsEl.textContent = `${vc} video${vc !== 1 ? 's' : ''} with notes`;
+    }
+}
+
+async function downloadZip(zip: JSZip, baseName: string): Promise<void> {
     const blob = await zip.generateAsync({ type: 'blob' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     const date = new Date().toISOString().split('T')[0];
     a.href = url;
-    a.download = `noteyt-export-${date}.zip`;
+    a.download = `${baseName}-${date}.zip`;
     a.style.display = 'none';
     document.body.appendChild(a);
     a.click();
@@ -395,12 +630,6 @@ function slugify(title: string): string {
 
 /**
  * Minimal markdown → HTML renderer for read-only display in the library.
- * We do NOT use TipTap here — the library page only needs to display notes,
- * not edit them. A lightweight inline renderer keeps the library bundle
- * lean (TipTap + ProseMirror is ~200KB+ in the content script already).
- *
- * Covers: headings, bold, italic, code, codeblocks, blockquotes, lists,
- * horizontal rules, links, task checkboxes.
  */
 function renderMarkdownToHtml(markdown: string): string {
     let html = escapeHtml(markdown);
